@@ -204,14 +204,48 @@ describe('hook-handlers registry', () => {
     ]);
   });
 
-  it('session-start has pull and dashboard-report handlers', () => {
+  it('session-start has pull, dashboard-report, and Codex tool-discovery handlers', () => {
     const registry = buildHandlerRegistry();
     const sessionStartHandlers = registry
       .filter((r) => r.event === 'session-start' && r.matcher === '*')
       .map((r) => r.handler.name);
     expect(sessionStartHandlers).toContain('pull');
     expect(sessionStartHandlers).toContain('dashboard-report');
+    expect(sessionStartHandlers).toContain('codex-tool-discovery-hint');
   });
+
+  it.each(['codex', 'codex-internal', 'tcodex'])(
+    'session-start requires %s to discover deferred MCP tools before choosing an implementation path',
+    async (tool) => {
+      const registration = buildHandlerRegistry().find(
+        (r) => r.event === 'session-start' && r.handler.name === 'codex-tool-discovery-hint',
+      )!;
+
+      expect(registration.background).not.toBe(true);
+      expect(registration.requiresConfig).toBe(true);
+
+      const result = await registration.handler.execute({}, tool, scope);
+      const parsed = JSON.parse(result!);
+      expect(parsed.hookSpecificOutput.hookEventName).toBe('SessionStart');
+      expect(parsed.hookSpecificOutput.additionalContext).toContain('deferred tool catalog');
+      expect(parsed.hookSpecificOutput.additionalContext).toContain('ALL_TOOLS');
+      expect(parsed.hookSpecificOutput.additionalContext).toContain('Feishu/Lark');
+      expect(parsed.hookSpecificOutput.additionalContext).toContain('use them in preference to a CLI');
+      expect(parsed.hookSpecificOutput.additionalContext).toContain('Do not take a fallback path');
+      expect(parsed.hookSpecificOutput.additionalContext).toContain('takes precedence over skill guidance');
+    },
+  );
+
+  it.each(['claude', 'cursor', 'codebuddy', 'opencode'])(
+    'session-start does not inject the Codex tool-discovery hint into %s',
+    async (tool) => {
+      const handler = buildHandlerRegistry().find(
+        (r) => r.event === 'session-start' && r.handler.name === 'codex-tool-discovery-hint',
+      )!.handler;
+
+      await expect(handler.execute({}, tool, scope)).resolves.toBeNull();
+    },
+  );
 
   it('session-start pull seeds the hook tool root before pulling', async () => {
     const registry = buildHandlerRegistry();

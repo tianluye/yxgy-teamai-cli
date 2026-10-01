@@ -1680,6 +1680,8 @@ teamai session save --push --include-prompt  # 额外带上（脱敏后的）首
 
 ### Hooks
 
+> **Codex 延迟工具发现**：对于 Codex 系列工具，内置 `SessionStart` dispatcher 会向模型上下文加入一条规则。凡请求涉及 MCP server、App、connector、外部服务或工具，Codex 在选择实现路径之前必须先搜索延迟工具目录（包括环境提供时的 `ALL_TOOLS`），并同时使用请求名称和常见别名。发现匹配的 MCP 工具时，必须优先于 CLI、浏览器、Web 请求或安装额外软件使用；只有发现无匹配项或匹配工具实际调用失败后，才能采用这些回退路径。该要求优先于建议使用 CLI 或回退路径的 skill 指引。其他 Agent 不会收到这条 Codex 专用上下文。
+
 `teamai init` 自动注入的 Hooks：
 
 | Hook 事件 | 操作 |

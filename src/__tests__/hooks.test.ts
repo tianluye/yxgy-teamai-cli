@@ -102,12 +102,21 @@ describe('hooks', () => {
     it('Codex format: injects PascalCase events into hooks.json', async () => {
       await injectHooks('/test/codex-hooks.json', 'codex');
 
-      const result = mockFiles['/test/codex-hooks.json'] as { hooks: Record<string, Array<{ matcher?: string; description?: string; hooks: Array<{ command: string }> }>> };
+      const result = mockFiles['/test/codex-hooks.json'] as { hooks: Record<string, Array<{ matcher?: string; description?: string; hooks: Array<{ command: string; commandWindows?: string }> }>> };
       expect(result.hooks).toBeDefined();
       expect(Object.keys(result.hooks)).toEqual(['SessionStart', 'Stop', 'PostToolUse', 'UserPromptSubmit']);
       expect(result.hooks.PostToolUse).toHaveLength(3);
       expect(result.hooks.SessionStart[0].hooks[0].command).toContain('--tool codex');
+      expect(result.hooks.SessionStart[0].hooks[0].commandWindows).toMatch(/^& '.+\\bash\.exe' -lc 'PATH=\$HOME\/\.teamai\/bin:\$PATH teamai hook-dispatch session-start --tool codex 2>\/dev\/null'; exit 0$/);
       expect(result.hooks.SessionStart[0].description).toBeUndefined();
+    });
+
+    it('does not add Codex Windows overrides to Claude hooks', async () => {
+      await injectHooks('/test/claude-settings.json', 'claude');
+
+      const result = mockFiles['/test/claude-settings.json'] as { hooks: Record<string, Array<{ hooks: Array<{ command: string; commandWindows?: string }> }>> };
+      expect(result.hooks.SessionStart[0].hooks[0].commandWindows).toBeUndefined();
+      expect(result.hooks.SessionStart[0].hooks[0].command).toContain('teamai hook-dispatch session-start --tool claude');
     });
 
     it('Claude uses PascalCase event names', async () => {
@@ -723,6 +732,16 @@ describe('hooks', () => {
       await injectHooks('/test/hooks.json', 'cursor');
 
       await expect(getHookStatus('/test/hooks.json', 'cursor')).resolves.toBe('installed');
+    });
+
+    it('requires the Windows override for current Codex hooks', async () => {
+      await injectHooks('/test/codex-hooks.json', 'codex');
+      await expect(getHookStatus('/test/codex-hooks.json', 'codex')).resolves.toBe('installed');
+
+      const result = mockFiles['/test/codex-hooks.json'] as any;
+      delete result.hooks.SessionStart[0].hooks[0].commandWindows;
+
+      await expect(getHookStatus('/test/codex-hooks.json', 'codex')).resolves.toBe('missing');
     });
 
     it('reports missing when settings exist without teamai hooks', async () => {

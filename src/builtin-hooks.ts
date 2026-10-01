@@ -35,6 +35,7 @@ import { bundledShellFor, resetBundledRuntimeCache, resolveCodebuddyNode, resolv
 
 const TEAMAI_BIN_DIR = '.teamai/bin';
 const WRAPPER_NAME = 'teamai';
+const CODEX_WRAPPER_TOOLS = new Set(['codex', 'codex-internal', 'tcodex']);
 
 /**
  * Tools whose hook commands need a shell to execute at all: their hook runner
@@ -303,6 +304,19 @@ function getWrapperDispatchCommand(event: string, tool: string, matcher?: string
   return `PATH="$HOME/${TEAMAI_BIN_DIR}:$PATH" teamai hook-dispatch ${event} --tool ${tool}${matcherArg} 2>/dev/null || true`;
 }
 
+/** Generate the Codex dispatch command using the standard local launcher. */
+function getCodexWrapperDispatchCommand(event: string, tool: string, matcher?: string): string {
+  const matcherArg = matcher && matcher !== '*' ? ` --matcher ${matcher}` : '';
+  // Codex's Windows hook runner does not guarantee a POSIX shell. Invoke the
+  // resolved Git Bash explicitly so the PATH assignment and `/dev/null` syntax
+  // are interpreted by Bash rather than cmd.exe/PowerShell.
+  const shell = getHookShellCommand();
+  // Avoid nested quotes: this complete command is itself passed as the
+  // quoted argument of `bash -lc "..."` through the Windows hook runner.
+  const command = `PATH=$HOME/${TEAMAI_BIN_DIR}:$PATH ${WRAPPER_NAME} hook-dispatch ${event} --tool ${tool}${matcherArg} 2>/dev/null`;
+  return `${shell} -lc "${command}" || true`;
+}
+
 /**
  * cmd.exe counterpart of getWrapperDispatchCommand, for tools whose Windows
  * hook runner is cmd.exe rather than a POSIX shell. cmd.exe has no
@@ -379,7 +393,9 @@ export function builtinHookDefs(tool: string): HookDef[] {
   // ZCode renders per-event timeouts from the ZCODE_TIMEOUT_MS table in its own
   // writer (toZcodeEntry), so def.timeout stays unset for it.
   const withTimeout = tool === 'cursor' || tool === 'copilot' || tool === 'workbuddy' || tool === 'codebuddy';
-  const buildCommand = tool === 'zcode'
+  const buildCommand = CODEX_WRAPPER_TOOLS.has(tool)
+    ? getCodexWrapperDispatchCommand
+    : tool === 'zcode'
     ? getRawDispatchCommand
     : WRAPPER_TOOLS.has(tool)
       ? (toolUsesCmdShell(tool) ? getCmdWrapperDispatchCommand : getWrapperDispatchCommand)

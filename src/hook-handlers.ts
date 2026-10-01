@@ -15,7 +15,7 @@ import type { HookHandler } from './hook-dispatch.js';
 import type { LocalConfig } from './types.js';
 import { deriveSessionId } from './utils/session-id.js';
 import { log } from './utils/logger.js';
-import { normalizeToolName } from './utils/tool-names.js';
+import { normalizeAgentType, normalizeToolName } from './utils/tool-names.js';
 import { resolveHookCwd } from './utils/hook-cwd.js';
 import { pathExists } from './utils/fs.js';
 
@@ -146,6 +146,31 @@ const updateHandler: HookHandler = {
     const { doUpdate } = await import('./update.js');
     await doUpdate();
     return null;
+  },
+};
+
+/**
+ * Codex defers large MCP catalogs behind tool search. Require discovery before
+ * the model chooses an implementation path, so an eager CLI or browser fallback
+ * cannot hide an enabled connector's deferred tools.
+ */
+const codexToolDiscoveryHintHandler: HookHandler = {
+  name: 'codex-tool-discovery-hint',
+  async execute(_stdin, tool) {
+    if (normalizeAgentType(tool.toLowerCase()) !== 'codex') return null;
+
+    return JSON.stringify({
+      hookSpecificOutput: {
+        hookEventName: 'SessionStart',
+        additionalContext: 'Before choosing an implementation path for any request involving an MCP server, app, connector, external service, or tool, '
+          + 'first search the deferred tool catalog with the available tool-search mechanism, including ALL_TOOLS when exposed. '
+          + 'Search both the requested name and common aliases (for example, Feishu/Lark). '
+          + 'If matching MCP tools are found, use them in preference to a CLI, browser, web request, or installing additional software. '
+          + 'Do not take a fallback path until discovery returns no match or a matching tool call fails. '
+          + 'An enabled server with no eagerly listed functions may still have deferred tools. '
+          + 'This requirement takes precedence over skill guidance that recommends a CLI or fallback path.',
+      },
+    });
   },
 };
 
@@ -837,6 +862,7 @@ export function buildHandlerRegistry(): HandlerRegistration[] {
     // (PULL_TIMEOUT_MS) — the shared 15s truncated the pull itself.
     { event: 'session-start', matcher: '*', handler: pullHandler, timeoutMs: PULL_TIMEOUT_MS, background: true },
     { event: 'session-start', matcher: '*', handler: dashboardReportHandler, timeoutMs: FOREGROUND_HOOK_TIMEOUT_MS, requiresConfig: true },
+    { event: 'session-start', matcher: '*', handler: codexToolDiscoveryHintHandler, timeoutMs: FOREGROUND_HOOK_TIMEOUT_MS, requiresConfig: true },
     { event: 'session-start', matcher: '*', handler: mrHintHandler, timeoutMs: FOREGROUND_HOOK_TIMEOUT_MS, gitOnly: true, requiresConfig: true },
     { event: 'session-start', matcher: '*', handler: packageHintHandler, timeoutMs: FOREGROUND_HOOK_TIMEOUT_MS, requiresConfig: true },
     { event: 'session-start', matcher: '*', handler: secretsHintHandler, timeoutMs: FOREGROUND_HOOK_TIMEOUT_MS, requiresConfig: true },

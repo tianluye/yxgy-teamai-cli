@@ -19,7 +19,7 @@ import {
 } from './types.js';
 import type { HookDef, TeamaiConfig, LocalConfig, Scope } from './types.js';
 import { isSelfMode } from './types.js';
-import { builtinHookDefs, applyBuiltinOverride, skipToolsWithoutShell, toolUsesCmdShell } from './builtin-hooks.js';
+import { builtinHookDefs, applyBuiltinOverride, ensureTeamaiWrapper, skipToolsWithoutShell, toolUsesCmdShell } from './builtin-hooks.js';
 import type { BuiltinHookOverride } from './builtin-hooks.js';
 import { resolveTeamHooks } from './resources/hooks.js';
 import { getUserHome } from './utils/home.js';
@@ -97,6 +97,7 @@ interface CursorHooksJson {
 interface CodexHookEntry {
   type: string;
   command: string;
+  commandWindows?: string;
   timeout?: number;
 }
 
@@ -220,6 +221,13 @@ const TEAMAI_COMMAND_MARKERS = [
 
 function isTeamaiHookCommand(command: string): boolean {
   return /(?:^|"|\s)teamai\s/.test(command);
+}
+
+/** Codex-only legacy matcher for commands emitted by earlier Codex adapters. */
+function isCodexTeamaiHookCommand(command: string): boolean {
+  const normalized = command.replace(/["']/g, '');
+  return /(?:^|[\\/\s])teamai(?:-codex)?(?:\.cmd)?\s/.test(normalized)
+    || TEAMAI_COMMAND_MARKERS.some((marker) => normalized.includes(marker));
 }
 
 /** Filter team defs down to those that apply to the given tool. */
@@ -400,12 +408,34 @@ function toCursorEntry(def: HookDef): CursorHookEntry {
   return entry;
 }
 
+const CODEX_BASH_WRAPPER_RE = /^(?:"([^"]+)"|(bash)) -lc "([^"]+)" \|\| true$/;
+
+function powershellSingleQuote(value: string): string {
+  return `'${value.replace(/'/g, "''")}'`;
+}
+
+/** Render Codex's Windows override as a fail-open PowerShell command. */
+function codexWindowsCommand(command: string): string | undefined {
+  const match = command.match(CODEX_BASH_WRAPPER_RE);
+  if (!match) return undefined;
+  const launcher = match[1]
+    ? match[1].replace(/\//g, '\\')
+    : 'bash';
+  // A quoted executable path is only a string in PowerShell unless it is
+  // preceded by the call operator. Single-quoting both arguments also keeps
+  // Bash variables such as $HOME and $PATH literal until Git Bash expands
+  // them. `exit 0` preserves the built-in hooks' fail-open contract.
+  return `& ${powershellSingleQuote(launcher)} -lc ${powershellSingleQuote(match[3])}; exit 0`;
+}
+
 function toCodexEntry(def: HookDef): CodexHookMatcher {
+  const commandWindows = def.source === 'builtin' ? codexWindowsCommand(def.command) : undefined;
   const entry: CodexHookMatcher = {
     hooks: [
       {
         type: 'command',
         command: def.command,
+        ...(commandWindows ? { commandWindows } : {}),
         ...(def.timeout !== undefined ? { timeout: def.timeout } : {}),
       },
     ],
@@ -788,7 +818,7 @@ async function reconcileCodexFormat(
 
   const isManaged = (entry: CodexHookMatcher): boolean => {
     const cmd = entry.hooks?.[0]?.command ?? '';
-    return TEAMAI_COMMAND_MARKERS.some((marker) => cmd.includes(marker)) || priorTeamCommands.has(cmd);
+    return isCodexTeamaiHookCommand(cmd) || priorTeamCommands.has(cmd);
   };
 
   const defs = opts.removeAll ? [] : desiredDefs(tool, teamDefs, opts.builtinOverride);
@@ -1213,7 +1243,9 @@ export async function getHookStatus(
     const present = defs.every((def) => {
       const want = toCodexEntry(def);
       const entries = hooksJson.hooks?.[def.event] ?? [];
-      return entries.some((e) => e.matcher === want.matcher && e.hooks?.[0]?.command === want.hooks[0].command);
+      return entries.some((e) => e.matcher === want.matcher
+        && e.hooks?.[0]?.command === want.hooks[0].command
+        && e.hooks?.[0]?.commandWindows === want.hooks[0].commandWindows);
     });
     return present ? 'installed' : 'missing';
   }
@@ -1291,7 +1323,7 @@ export async function hasTeamaiHooks(
     return Object.values(j.hooks).some((entries) =>
       (entries ?? []).some((e) => {
         const cmd = e.hooks?.[0]?.command ?? '';
-        return TEAMAI_COMMAND_MARKERS.some((m) => cmd.includes(m)) || priorTeamCommands.has(cmd);
+        return isCodexTeamaiHookCommand(cmd) || priorTeamCommands.has(cmd);
       }),
     );
   }
@@ -1700,6 +1732,7 @@ export async function reconcileHooksToAllTools(
     if (claimedSettingsFiles.has(settingsFileKey)) continue;
     claimedSettingsFiles.add(settingsFileKey);
     try {
+      if (!opts.removeAll && CODEX_TOOLS.has(tool)) ensureTeamaiWrapper();
       if (await skipInstalled(settingsPath, tool)) continue;
       await reconcileHooks(settingsPath, tool, defs, {
         manifestPath: teamManifestPath,

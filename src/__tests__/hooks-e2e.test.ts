@@ -68,6 +68,45 @@ describe('hooks E2E — real file I/O', () => {
       expect(hooks.beforeSubmitPrompt).toHaveLength(1);
     });
 
+    it('replaces legacy Codex dispatch entries instead of duplicating them', async () => {
+      const p = path.join(tmpDir, 'codex', 'hooks.json');
+      await fse.outputJson(p, {
+        hooks: {
+          SessionStart: [
+            {
+              hooks: [{
+                type: 'command',
+                command: '"D:/programs/Git/bin/bash.exe" -lc \'"/c/Users/1/.teamai/bin/teamai" hook-dispatch session-start --tool codex\'',
+              }],
+            },
+            {
+              hooks: [{
+                type: 'command',
+                command: '"D:/programs/Git/bin/bash.exe" -lc "teamai -codex hook-dispatch session-start --tool codex 2>/dev/null" || true',
+              }],
+            },
+            {
+              hooks: [{
+                type: 'command',
+                command: 'PATH="$HOME/.teamai/bin:$PATH" teamai-codex hook-dispatch session-start --tool codex 2>/dev/null || true',
+              }],
+            },
+          ],
+        },
+      });
+
+      await injectHooks(p, 'codex');
+
+      const result = await readResult(p);
+      const sessionStart = (result.hooks as Record<string, Array<{ hooks: Array<{ command: string }> }>>).SessionStart;
+      expect(sessionStart).toHaveLength(1);
+      expect(sessionStart[0].hooks[0].command).toContain('hook-dispatch session-start --tool codex');
+      expect(sessionStart[0].hooks[0].command).not.toContain('/c/Users/1/.teamai/bin/teamai');
+      expect(sessionStart[0].hooks[0].command).toContain('PATH=$HOME/.teamai/bin:$PATH teamai hook-dispatch');
+      expect(sessionStart[0].hooks[0].command).not.toContain('teamai-codex');
+      expect(sessionStart[0].hooks[0].command).not.toContain('teamai -codex');
+    });
+
     it('all TEAMAI_HOOK_SUBCOMMANDS present in Claude output', async () => {
       const p = claudePath();
       await injectHooks(p, 'claude');

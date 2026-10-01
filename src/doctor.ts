@@ -304,7 +304,7 @@ async function hasInstalledCodexHooks(toolPaths: TeamaiConfig['toolPaths'], base
     const settingsPath = path.join(baseDir, paths.settings);
     if (!await pathExists(settingsPath)) continue;
     const content = await readFileSafe(settingsPath);
-    if (content?.includes('teamai hook-dispatch')) return true;
+    if (content?.includes('teamai hook-dispatch') || content?.includes('teamai-codex hook-dispatch')) return true;
   }
   return false;
 }

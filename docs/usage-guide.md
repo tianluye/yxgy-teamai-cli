@@ -1821,6 +1821,17 @@ Hooks automatically injected by `teamai init`:
 | `UserPromptSubmit` | Slash command tracking |
 | `Stop` | CLI update check + report session end |
 
+For Codex-family tools, the built-in `SessionStart` dispatcher also adds a short
+tool-discovery guardrail to the model context. Before choosing an implementation
+path for a request involving an MCP server, app, connector, external service, or
+tool, Codex must search its deferred tool catalog (including `ALL_TOOLS` when
+exposed) using the requested name and common aliases. A matching MCP tool takes
+priority over a CLI, browser, web request, or software installation; Codex may
+use one of those fallback paths only when discovery finds no match or a matching
+tool call fails. This requirement takes precedence over skill guidance that
+recommends a CLI or fallback path. Other agents do not receive this Codex-specific
+context.
+
 ```bash
 teamai hooks list      # Show effective built-in and team hooks
 teamai hooks inject    # Re-inject
