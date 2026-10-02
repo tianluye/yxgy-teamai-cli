@@ -487,6 +487,22 @@ Overview of the middleware layer.
     expect(results).toHaveLength(0);
   });
 
+  it('does not promote generic learning headings into strong matches', async () => {
+    writeLearningDoc(learningsDir, 'generic-heading.md', `---
+title: "Unrelated incident"
+tags: [incident]
+---
+
+## Deployment
+
+Generic deployment notes.
+`);
+    await buildIndex(learningsDir);
+    const index = await loadIndex();
+
+    expect(search('deployment', index!)).toHaveLength(0);
+  });
+
   it('allows body-only matches for docs type entries', async () => {
     // Build a separate index with a docs-type entry that has a generic title
     // and a domain-specific term only in the body.
@@ -502,6 +518,28 @@ Overview of the middleware layer.
     const results = search('supercache', index!);
     expect(results.length).toBeGreaterThan(0);
     expect(results[0].entry.title).toContain('dev guide');
+  });
+
+  it('returns a rule when the query matches a nested Markdown heading', async () => {
+    const rulesDir = path.join(tmpDir, 'rules');
+    fs.mkdirSync(path.join(rulesDir, 'backend'), { recursive: true });
+    fs.writeFileSync(path.join(rulesDir, 'backend', 'backend.md'), `# Backend standards
+
+## Engineering standards
+
+### Python calls Java service standard
+
+Python callers must generate clients from the Schema published by Java.
+`, 'utf-8');
+
+    await buildIndex({ learningsDir, rulesDir });
+    const index = await loadIndex();
+
+    const results = search('Python Java service standard Schema', index!);
+    const rule = results.find((result) => result.entry.type === 'rules');
+    expect(rule).toBeDefined();
+    expect(rule!.entry.filename.replace(/\\/g, '/')).toBe('backend/backend.md');
+    expect(rule!.matchedTerms).toEqual(expect.arrayContaining(['Python', 'Java', 'service', 'standard']));
   });
 
   it('returns results when query matches tag but not title', async () => {

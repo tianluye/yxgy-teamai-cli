@@ -277,12 +277,17 @@ describe('recall scope isolation (issue #73)', () => {
   it('records recall quality (miss) when nothing matches', async () => {
     vi.stubEnv('CLAUDE_SESSION_ID', 'recall-quality-miss-session');
     vi.mocked(detectProjectConfig).mockResolvedValue(projectConfig);
+    const info = vi.spyOn(console, 'log').mockImplementation(() => {});
 
     await recall('completely unrelated gibberish query xyzzy', { dryRun: true });
 
     expect(readRecallQuality('recall-quality-miss-session')).toEqual(
       expect.objectContaining({ hitCount: 0, missCount: 1 }),
     );
+    expect(info.mock.calls.flat().join('\n')).toContain(
+      'No matching team knowledge found for "completely unrelated gibberish query xyzzy". Indexed types searched: learnings.',
+    );
+    info.mockRestore();
   });
 
   it('records recall quality under the agent session, where contribute-check reads it for the Stop hook (#883)', async () => {

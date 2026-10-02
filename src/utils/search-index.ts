@@ -224,6 +224,31 @@ const CODEBASE_FULL_FILENAME = 'codebase.md';
 const CODEBASE_INDEX_WEIGHT_BOOST = 1.5;
 
 /**
+ * Markdown headings describe the subjects covered by long-form rules and docs.
+ * Index them separately from body text so a generic file such as
+ * `rules/backend/backend.md` can still be found by one of its named standards,
+ * without admitting every weak body-only match from curated knowledge.
+ */
+function markdownHeadingTokens(content: string): string[] {
+  const tokens: string[] = [];
+  let inFence = false;
+
+  for (const line of content.split(/\r?\n/)) {
+    if (/^\s*(```|~~~)/.test(line)) {
+      inFence = !inFence;
+      continue;
+    }
+    if (inFence) continue;
+
+    const match = line.match(/^\s{0,3}#{1,6}\s+(.+?)\s*#*\s*$/);
+    if (!match) continue;
+    tokens.push(...tokenize(match[1]));
+  }
+
+  return [...new Set(tokens)];
+}
+
+/**
  * Infer the content domain of a knowledge entry from four signals (priority order):
  * 1. Explicit `domain:` frontmatter field
  * 2. Tag keyword matching (TECHNICAL_TAGS / OPS_TAGS / SUPPORT_TAGS)
@@ -456,6 +481,9 @@ async function entryFromMdFile(
 
   const titleTokens = tokenize(title);
   const tagTokens = tags.flatMap((tag) => tokenize(tag));
+  // Learnings keep their stricter title/tag gate: generic headings such as
+  // "Background" or "Solution" must not turn weak body matches into hits.
+  const headingTokens = type === 'learnings' ? [] : markdownHeadingTokens(bodyExcerpt);
   const bodyTokens = tokenize(bodyExcerpt);
 
   const tokens = [
@@ -463,6 +491,7 @@ async function entryFromMdFile(
     ...titleTokens,
     ...tagTokens.map((t) => `tag:${t}`),
     ...tagTokens,
+    ...headingTokens.map((t) => `heading:${t}`),
     ...bodyTokens,
     // Type-prefixed token enables future filtered searches (e.g. type:skills).
     `type:${type}`,
@@ -884,6 +913,7 @@ function dedupKey(r: SearchResult): string {
  *
  * Scoring (P1.4 domain-weighted):
  * - Title token match: 3 points
+ * - Heading token match: 2.5 points
  * - Tag token match: 2 points
  * - Body token match: 1 point
  * - Vote bonus: +0.5 per vote (caps at 5 points)
@@ -943,31 +973,36 @@ export function search(
 
   for (const entry of index.entries) {
     let score = 0;
-    let hasTitleOrTagMatch = false;
+    let hasStrongMatch = false;
     const entryTokens = new Set(entry.tokens);
 
     for (const qt of queryTokens) {
       const titleToken = `title:${qt}`;
+      const headingToken = `heading:${qt}`;
       const tagToken = `tag:${qt}`;
 
       if (entryTokens.has(titleToken)) {
         score += 3 * idf(titleToken);
-        hasTitleOrTagMatch = true;
+        hasStrongMatch = true;
+      }
+      if (entryTokens.has(headingToken)) {
+        score += 2.5 * idf(headingToken);
+        hasStrongMatch = true;
       }
       if (entryTokens.has(tagToken)) {
         score += 2 * idf(tagToken);
-        hasTitleOrTagMatch = true;
+        hasStrongMatch = true;
       }
       if (entryTokens.has(qt)) {
         score += 1 * idf(qt);
       }
     }
 
-    // Require at least one title or tag match to filter out body-only noise.
+    // Require at least one title, heading, or tag match to filter out body-only noise.
     // Docs (type === 'docs') often lack tags and have generic titles, so allow body-only
     // matches for them — the IDF weighting naturally demotes low-relevance hits.
     const isDocsEntry = entry.type === 'docs';
-    if (score > 0 && (hasTitleOrTagMatch || isDocsEntry)) {
+    if (score > 0 && (hasStrongMatch || isDocsEntry)) {
       // Normalize the token-match sum by query length before adding absolute
       // bonuses, so cross-query scores share a scale (see lengthNorm above).
       score /= lengthNorm;
@@ -994,7 +1029,7 @@ export function search(
       // Skipped for entries admitted only by the codebase exemption — those are
       // scored on body text, so every term would read as missing and the caller
       // would discard a legitimate hit as uncovered.
-      if (!hasTitleOrTagMatch) {
+      if (!hasStrongMatch) {
         results.push({ entry, score });
         continue;
       }
@@ -1002,7 +1037,9 @@ export function search(
       const matchedTerms: string[] = [];
       const missingTerms: string[] = [];
       for (const { word, tokens: wt } of wordTokens) {
-        const hit = wt.some((t) => entryTokens.has(`title:${t}`) || entryTokens.has(`tag:${t}`));
+        const hit = wt.some((t) => entryTokens.has(`title:${t}`)
+          || entryTokens.has(`heading:${t}`)
+          || entryTokens.has(`tag:${t}`));
         (hit ? matchedTerms : missingTerms).push(word);
       }
 

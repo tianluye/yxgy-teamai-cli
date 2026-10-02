@@ -28,10 +28,12 @@ Before any classification or search, run a single lightweight precheck:
 teamai recall --check "<3-6 keywords from the task>"
 ```
 
-- If the output starts with `NOT_RELEVANT`: the team knowledge base has no
-  meaningful coverage for this task. Emit exactly one line
-  `No relevant team knowledge found for: <query>` and **stop** — do not
-  proceed to Step 1–5, do not read any files, do not run a full recall.
+- If the output starts with `NOT_RELEVANT`: there is no sufficiently ranked
+  index hit. For ordinary tasks, emit exactly one line
+  `No relevant team knowledge found for: <query>` and **stop**. For a request
+  about team standards, engineering requirements, conventions, policies, or
+  best practices, first run `teamai list rules` and `teamai list docs`, inspect
+  candidate files for the discriminating terms, and only then report no coverage.
 - If the output starts with `RELEVANT`: check complexity (see below),
   then continue to Step 1 or take the LOW shortcut.
   `RELEVANT` means only "something scored above the threshold, so reading
@@ -40,7 +42,8 @@ teamai recall --check "<3-6 keywords from the task>"
   compared against) and, for the top hit, `matched=` / `missing=` listing
   which query terms it covers. Treat `missing=` here as a hint about where
   Step 4 is likely to land, **not** as a reason to stop early: coverage is
-  computed over titles and tags only, so a term reported missing may still be
+  computed over titles and tags, plus indexed headings for curated rules,
+  docs, and skills, so a term reported missing may still be
   discussed in a body that a full recall (or a `Grep`) will surface. Only
   `NOT_RELEVANT` short-circuits the flow.
 - If the output (stdout or stderr) contains `Nothing was searched:`: this
@@ -184,8 +187,8 @@ If the results look topically right but miss what you asked about, run recall
 once more with a different term mix — swapping which supporting word you keep,
 or trading a proper noun for the subsystem name. Hard rules allow up to three
 calls per invocation; use a second one rather than concluding from a single
-keyword set. `Grep` over the learnings directory is also fair game when a term
-is too specific to rank (see Step 4).
+keyword set. Searching the synced candidate source files directly is also fair
+game when a term is too specific to rank (see Step 4).
 
 ### Step 3 — Run the teamai recall command
 
@@ -208,14 +211,16 @@ If the first call returns insufficient results, you may retry once with
 
 If the output contains `Nothing was searched:`, return that line from the
 marker on and stop, as in Step 0. If the command fails otherwise, knowledge base is
-empty, or returns zero hits, emit a single line
-`No relevant team knowledge found for: <query>` and stop.
+empty, or returns zero hits, follow the standards fallback from Step 0 when it
+applies; otherwise emit a single line `No relevant team knowledge found for:
+<query>` and stop.
 
 ### Step 4 — Read the top hits and drill into codebase
 
 **First, judge coverage — this is your call, not the CLI's.** Each result
 carries a `Matched: … | Missing: …` line listing which of your query terms
-appear in its title or tags (the line is omitted when every term matched).
+appear in its title or tags, plus Markdown headings for curated rules, docs,
+or skills (the line is omitted when every term matched).
 Score and `RELEVANT` only tell you a hit is worth opening; they cannot tell
 you whether it covers your subject.
 
@@ -391,13 +396,16 @@ rather than dropping the reasoning.
   Gaps section so the main conversation does not hallucinate.
 - When zero hits are found but `teamwiki/` exists, check if the query
   relates to a known gap before returning "no knowledge found".
-- When `teamai recall --check` returns `NOT_RELEVANT`, do not continue — return the no-knowledge line and stop. The precheck exists to avoid wasted retrieval on unrelated tasks.
+- When `teamai recall --check` returns `NOT_RELEVANT`, do not continue unless
+  the task asks for team standards, engineering requirements, conventions,
+  policies, or best practices. Those requests must use the Step 0 rules/docs
+  fallback before reporting no knowledge.
 - **Relevance is your judgement.** `teamai recall` returns its top 5 by score
   without filtering on coverage; it reports `Matched:`/`Missing:` so you can
   decide. Never present hits whose discriminating terms are all missing as if
   they answered the question — report the gap instead. Recall returning
   results is not evidence that the knowledge exists. Equally, a single ranked
   query is not evidence that it does not: before reporting a gap, consider a
-  second recall with a different term mix or a `Grep` for the specific term,
-  since ranking covers titles and tags while `Grep` reaches bodies.
+  second recall with a different term mix or a direct search for the specific
+  term in synced candidate files, since ranking can still miss body wording.
 - **Do not invent call relationships.** The "Change entry points" section must be derived solely from graph-index.json edges and dependency-paths.md. If those files are absent or do not cover the queried files, write `relation data not covered` and omit the section — do not guess.

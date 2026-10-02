@@ -8,7 +8,6 @@ TypeScript, Node 20+ (`npm run lint` needs ^20.19 or >=22.12), tsup (ESM), Vites
 
 - Default branch: `main`. Worktrees and PRs based on `origin/main`.
 - PR only to `Tencent/teamai-cli`. Before push, check `git log origin/main..HEAD`; rebase or cherry-pick if unrelated commits appear.
-- **必须使用 Worktree**：改代码前先 `EnterWorktree`，禁止在主工作目录修改。
 
 ## Rules
 

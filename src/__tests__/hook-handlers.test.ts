@@ -234,6 +234,10 @@ describe('hook-handlers registry', () => {
       expect(context).toContain('ALL_TOOLS');
       expect(context).toContain('use it before choosing another implementation path');
       expect(context).toContain('Only fall back');
+      expect(context).toContain('skills, learnings, docs, and rules');
+      expect(context).toContain('teamai list rules');
+      expect(context).toContain('teamai list docs');
+      expect(context).toContain('Never claim that team knowledge has no relevant standard');
     },
   );
 

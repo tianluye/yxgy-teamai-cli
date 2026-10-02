@@ -109,9 +109,16 @@ teamai push        # Publish your local skills/rules/docs to the team
 teamai status      # Show local vs team differences
 teamai doctor      # Diagnose configuration and hook problems
 teamai list        # List resources (skills|rules|docs|env|agents|hooks|mcp)
-teamai recall <q>  # Search what the team has already learned
+teamai recall <q>  # Search visible team skills, learnings, docs and rules
 teamai env exec -- <cmd>  # Run a CLI with this directory's team env and secrets
 ```
+
+For team standards, engineering requirements, conventions, policies or best
+practices, start with `teamai recall` using 3–6 discriminating terms. Read the
+returned source before relying on it. If recall returns no result, incomplete
+coverage, or says a type was skipped, continue with `teamai list rules` and
+`teamai list docs`, then inspect candidate files. Never claim the team has no
+relevant standard from one empty recall; if retrieval was incomplete, say so.
 
 Every other command, every flag, and the flags `--help` hides live in the
 generated reference below. Read it instead of guessing a flag.

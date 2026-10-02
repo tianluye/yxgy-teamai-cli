@@ -199,6 +199,17 @@ describe('isLegacyIndex', () => {
     expect(isLegacyIndex(v2Index)).toBe(true);
   });
 
+  it('detects v6 indexes without heading tokens as legacy', () => {
+    const v6Index = {
+      version: 6,
+      builtAt: '2026-01-01T00:00:00Z',
+      elapsedMs: 10,
+      entries: [],
+      df: {},
+    };
+    expect(isLegacyIndex(v6Index)).toBe(true);
+  });
+
   it('returns false for fully populated v3 index (type + domain present)', () => {
     const current = {
       version: SEARCH_INDEX_VERSION,

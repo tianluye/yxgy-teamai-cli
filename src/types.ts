@@ -1680,7 +1680,9 @@ export interface SearchIndexEntry {
 }
 
 /** Schema version of the on-disk search-index.json (bump on breaking change). */
-export const SEARCH_INDEX_VERSION = 6;
+// v7 adds heading-prefixed tokens so rules with generic filenames can be
+// recalled by the standards named inside them.
+export const SEARCH_INDEX_VERSION = 7;
 
 /** Shape of the search-index.json file. */
 export interface SearchIndex {

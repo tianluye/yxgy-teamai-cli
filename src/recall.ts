@@ -33,7 +33,7 @@ const CODEBASE_RELEVANCE_THRESHOLD = 4.0;
  *  step with the divisor. Measured on a 163-entry corpus, true positives ranged
  *  from 11.2 (a 3-token query) to 63.2 (19 tokens), all well clear of the 7.3
  *  cutoff, while unrelated queries scored 0 — they are excluded by the
- *  title/tag gate in `search` rather than by this threshold.
+ *  title/heading/tag gate in `search` rather than by this threshold.
  *
  *  IMPORTANT: this ratio is only "stricter" for N ≳ 20 (where baseline×1.35 >
  *  4.0). For small corpora (N=1–5) the ratio gives a cutoff of 1.35–3.57, which
@@ -147,7 +147,7 @@ interface ScopedSearchResult extends SearchResult {
 //      │   └─ missing? → buildIndex() first
 //      │
 //      ├─ search(query, index)
-//      │   └─ 0 results? → "No matching learnings found"
+//      │   └─ 0 results? → "No matching team knowledge found"
 //      │
 //      ├─ formatResults(results)
 //      │   └─ STDOUT (AI-consumable format)
@@ -563,7 +563,7 @@ export async function recall(
       emitCheckVerdict(0);
       return;
     }
-    if (!indexBuildFailed) log.info('No learnings available. Run `teamai pull` first to sync team knowledge.');
+    if (!indexBuildFailed) log.info('No indexed team knowledge available. Run `teamai pull` first to sync team knowledge.');
     return;
   }
 
@@ -653,7 +653,13 @@ export async function recall(
   }
 
   if (topResults.length === 0) {
-    log.info(`No matching learnings found for "${query}".`);
+    const searchedTypes = new Set<string>();
+    for (const { index } of scopeIndexes) {
+      for (const entry of index.entries) searchedTypes.add(entry.type);
+    }
+    if (hasWiki) searchedTypes.add('codebase');
+    const searched = [...searchedTypes].sort().join(', ') || 'none';
+    log.info(`No matching team knowledge found for "${query}". Indexed types searched: ${searched}.`);
     return;
   }
 
