@@ -149,6 +149,30 @@ const updateHandler: HookHandler = {
   },
 };
 
+async function isTeamAIAvailable(config: LocalConfig | null): Promise<boolean> {
+  return config !== null;
+}
+
+const teamaiSessionBootstrapHintHandler: HookHandler = {
+  name: 'teamai-session-bootstrap-hint',
+  async execute(_stdin, tool, config) {
+    if (normalizeAgentType(tool.toLowerCase()) !== 'codex') return null;
+    if (!(await isTeamAIAvailable(config))) return null;
+
+    return JSON.stringify({
+      hookSpecificOutput: {
+        hookEventName: 'SessionStart',
+        additionalContext: [
+          'Initialize TeamAI before starting any task.',
+          'Discover its skills and MCP tools first, including deferred tools and ALL_TOOLS when available.',
+          'If a TeamAI capability matches the request, use it before choosing another implementation path.',
+          'Only fall back to a CLI, browser, web request, or custom implementation when TeamAI is unavailable, discovery fails, or no matching capability exists.',
+        ].join('\n'),
+      },
+    });
+  },
+};
+
 /**
  * Codex defers large MCP catalogs behind tool search. Require discovery before
  * the model chooses an implementation path, so an eager CLI or browser fallback
@@ -862,6 +886,7 @@ export function buildHandlerRegistry(): HandlerRegistration[] {
     // (PULL_TIMEOUT_MS) — the shared 15s truncated the pull itself.
     { event: 'session-start', matcher: '*', handler: pullHandler, timeoutMs: PULL_TIMEOUT_MS, background: true },
     { event: 'session-start', matcher: '*', handler: dashboardReportHandler, timeoutMs: FOREGROUND_HOOK_TIMEOUT_MS, requiresConfig: true },
+    { event: 'session-start', matcher: '*', handler: teamaiSessionBootstrapHintHandler, timeoutMs: FOREGROUND_HOOK_TIMEOUT_MS, requiresConfig: true },
     { event: 'session-start', matcher: '*', handler: codexToolDiscoveryHintHandler, timeoutMs: FOREGROUND_HOOK_TIMEOUT_MS, requiresConfig: true },
     { event: 'session-start', matcher: '*', handler: mrHintHandler, timeoutMs: FOREGROUND_HOOK_TIMEOUT_MS, gitOnly: true, requiresConfig: true },
     { event: 'session-start', matcher: '*', handler: packageHintHandler, timeoutMs: FOREGROUND_HOOK_TIMEOUT_MS, requiresConfig: true },

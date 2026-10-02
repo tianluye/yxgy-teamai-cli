@@ -204,15 +204,57 @@ describe('hook-handlers registry', () => {
     ]);
   });
 
-  it('session-start has pull, dashboard-report, and Codex tool-discovery handlers', () => {
+  it('session-start has pull, dashboard-report, and TeamAI bootstrap handlers', () => {
     const registry = buildHandlerRegistry();
     const sessionStartHandlers = registry
       .filter((r) => r.event === 'session-start' && r.matcher === '*')
       .map((r) => r.handler.name);
     expect(sessionStartHandlers).toContain('pull');
     expect(sessionStartHandlers).toContain('dashboard-report');
+    expect(sessionStartHandlers).toContain('teamai-session-bootstrap-hint');
     expect(sessionStartHandlers).toContain('codex-tool-discovery-hint');
   });
+
+  it.each(['codex', 'codex-internal', 'tcodex'])(
+    'session-start requires %s to load teamai before other work',
+    async (tool) => {
+      const registration = buildHandlerRegistry().find(
+        (r) => r.event === 'session-start' && r.handler.name === 'teamai-session-bootstrap-hint',
+      )!;
+
+      expect(registration.background).not.toBe(true);
+      expect(registration.requiresConfig).toBe(true);
+
+      const result = await registration.handler.execute({}, tool, scope);
+      const parsed = JSON.parse(result!);
+      const context = parsed.hookSpecificOutput.additionalContext as string;
+      expect(parsed.hookSpecificOutput.hookEventName).toBe('SessionStart');
+      expect(context).toContain('Initialize TeamAI before starting any task');
+      expect(context).toContain('deferred tools');
+      expect(context).toContain('ALL_TOOLS');
+      expect(context).toContain('use it before choosing another implementation path');
+      expect(context).toContain('Only fall back');
+    },
+  );
+
+  it('session-start does not bootstrap teamai without an initialized scope', async () => {
+    const handler = buildHandlerRegistry().find(
+      (r) => r.event === 'session-start' && r.handler.name === 'teamai-session-bootstrap-hint',
+    )!.handler;
+
+    await expect(handler.execute({}, 'codex', null)).resolves.toBeNull();
+  });
+
+  it.each(['claude', 'cursor', 'codebuddy', 'opencode'])(
+    'session-start does not bootstrap teamai into %s',
+    async (tool) => {
+      const handler = buildHandlerRegistry().find(
+        (r) => r.event === 'session-start' && r.handler.name === 'teamai-session-bootstrap-hint',
+      )!.handler;
+
+      await expect(handler.execute({}, tool, scope)).resolves.toBeNull();
+    },
+  );
 
   it.each(['codex', 'codex-internal', 'tcodex'])(
     'session-start requires %s to discover deferred MCP tools before choosing an implementation path',
